@@ -495,6 +495,66 @@ impl<const RCL: usize, const ECL: usize> Encoder<RCL, ECL> {
         }
     }
 
+    fn encode_string_length_with_buffer(
+        &self,
+        buffer: &mut BitString,
+        is_large_string: bool,
+        length: usize,
+        constraints: Option<&Extensible<constraints::Size>>,
+        mut encode_fn: impl FnMut(&mut BitString, core::ops::Range<usize>) -> Result<()>,
+    ) -> Result<()> {
+        let Some(constraints) = constraints else {
+            return self.encode_unconstrained_length_with_buffer(buffer, length, None, encode_fn);
+        };
+
+        if constraints.extensible.is_none() {
+            Error::check_length(length, &constraints.constraint, self.codec())?;
+        }
+
+        let constraints = constraints.constraint;
+
+        match constraints.start_and_end() {
+            (Some(_), Some(_)) => {
+                let range = constraints.range().unwrap();
+
+                if range == 0 {
+                    Ok(())
+                } else if range == 1 {
+                    (encode_fn)(buffer, 0..length)?;
+                    Ok(())
+                } else if range <= SIXTY_FOUR_K as usize {
+                    if self.options.aligned && range > 256 {
+                        self.pad_to_alignment(buffer);
+                    }
+                    let effective_length = constraints.effective_value(length).into_inner();
+                    let range = if self.options.aligned && range > 256 {
+                        let range = crate::num::log2(range as i128);
+                        crate::bits::range_from_len(if range.is_power_of_two() {
+                            range
+                        } else {
+                            range.next_power_of_two()
+                        })
+                    } else {
+                        range as i128
+                    };
+                    self.encode_non_negative_binary_integer(
+                        buffer,
+                        range,
+                        &(effective_length as u32).to_be_bytes(),
+                    );
+                    if is_large_string {
+                        self.pad_to_alignment(buffer);
+                    }
+                    (encode_fn)(buffer, 0..length)?;
+                    Ok(())
+                } else {
+                    self.encode_unconstrained_length_with_buffer(buffer, length, None, encode_fn)
+                }
+            }
+            _ => self.encode_unconstrained_length_with_buffer(buffer, length, None, encode_fn),
+        }
+    }
+
     fn encode_length(
         &self,
         buffer: &mut BitString,
@@ -503,6 +563,16 @@ impl<const RCL: usize, const ECL: usize> Encoder<RCL, ECL> {
         encode_fn: impl Fn(core::ops::Range<usize>) -> Result<BitString>,
     ) -> Result<()> {
         self.encode_string_length(buffer, false, length, constraints, encode_fn)
+    }
+
+    fn encode_length_with_buffer(
+        &self,
+        buffer: &mut BitString,
+        length: usize,
+        constraints: Option<&Extensible<constraints::Size>>,
+        encode_fn: impl FnMut(&mut BitString, core::ops::Range<usize>) -> Result<()>,
+    ) -> Result<()> {
+        self.encode_string_length_with_buffer(buffer, false, length, constraints, encode_fn)
     }
 
     fn encode_unconstrained_length(
@@ -551,6 +621,66 @@ impl<const RCL: usize, const ECL: usize> Encoder<RCL, ECL> {
                 buffer.extend(&[FRAGMENT_MARKER | fragment_index]);
 
                 buffer.extend((encode_fn)(min..min + amount)?);
+                min += amount;
+
+                if length == SIXTEEN_K as usize {
+                    // Add final fragment in the frame.
+                    buffer.extend(&[0]);
+                    break;
+                }
+                length = length.saturating_sub(amount);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn encode_unconstrained_length_with_buffer(
+        &self,
+        buffer: &mut BitString,
+        mut length: usize,
+        min: Option<usize>,
+        mut encode_fn: impl FnMut(&mut BitString, core::ops::Range<usize>) -> Result<()>,
+    ) -> Result<()> {
+        let mut min = min.unwrap_or_default();
+
+        self.pad_to_alignment(&mut *buffer);
+        if length <= 127 {
+            buffer.extend((length as u8).to_be_bytes());
+            (encode_fn)(buffer, 0..length)?;
+        } else if length < SIXTEEN_K.into() {
+            const SIXTEENTH_BIT: u16 = 0x8000;
+            buffer.extend((SIXTEENTH_BIT | length as u16).to_be_bytes());
+            (encode_fn)(buffer, 0..length)?;
+        } else {
+            loop {
+                // Hack to get around no exclusive syntax.
+                const K64: usize = SIXTY_FOUR_K as usize;
+                const K48: usize = FOURTY_EIGHT_K as usize;
+                const K32: usize = THIRTY_TWO_K as usize;
+                const K16: usize = SIXTEEN_K as usize;
+                const K64_MAX: usize = K64 - 1;
+                const K48_MAX: usize = K48 - 1;
+                const K32_MAX: usize = K32 - 1;
+                let (fragment_index, amount) = match length {
+                    K64..=usize::MAX => (4, K64),
+                    K48..=K64_MAX => (3, K48),
+                    K32..=K48_MAX => (2, K32),
+                    K16..=K32_MAX => (1, K16),
+                    _ => {
+                        break self.encode_unconstrained_length_with_buffer(
+                            buffer,
+                            length,
+                            Some(min),
+                            encode_fn,
+                        )?;
+                    }
+                };
+
+                const FRAGMENT_MARKER: u8 = 0xC0;
+                buffer.extend(&[FRAGMENT_MARKER | fragment_index]);
+
+                (encode_fn)(buffer, min..min + amount)?;
                 min += amount;
 
                 if length == SIXTEEN_K as usize {
@@ -1104,25 +1234,19 @@ impl<const RFC: usize, const EFC: usize> crate::Encoder<'_> for Encoder<RFC, EFC
 
         self.encode_extensible_bit(&constraints, &mut buffer, || {
             constraints.size().is_some_and(|size_constraint| {
-                size_constraint.extensible.is_some()
-                    && size_constraint.constraint.contains(&values.len())
+                size_constraint.constraint.contains(&values.len())
             })
         });
-        let extension_bits = buffer.clone();
 
-        self.encode_length(&mut buffer, values.len(), constraints.size(), |range| {
-            let mut buffer = BitString::default();
-            let mut first_round = true;
+        let base_output_len = self.output_length();
+        self.encode_length_with_buffer(&mut buffer, values.len(), constraints.size(), |buffer, range| {
             for value in &values[range] {
                 let mut encoder = Self::new(options);
-                if first_round {
-                    encoder.parent_output_length = Some(extension_bits.len());
-                    first_round = false;
-                }
+                encoder.parent_output_length = Some(base_output_len + buffer.len());
                 E::encode(value, &mut encoder)?;
                 buffer.extend(encoder.bitstring_output());
             }
-            Ok(buffer)
+            Ok(())
         })?;
 
         self.extend(tag, &buffer);

@@ -16,6 +16,7 @@ use crate::{
         strings::{should_be_indexed, StaticPermittedAlphabet},
         Constraints, Enumerated, IntegerType, SetOf, Tag,
     },
+    prelude::constraints::Bounded,
     Decode,
 };
 
@@ -338,10 +339,10 @@ impl<'input, const RFC: usize, const EFC: usize> Decoder<'input, RFC, EFC> {
                     range as i128
                 };
 
-                let (mut input, length) =
+                let (input, length) =
                     nom::bytes::streaming::take(crate::num::log2(range))(input)
                         .map_err(|e| DecodeError::map_nom_err(e, self.codec()))?;
-                input = self.parse_padding(input)?;
+                //input = self.parse_padding(input)?;
                 length
                     .load_be::<usize>()
                     .checked_add(size_constraint.minimum())
@@ -709,7 +710,30 @@ impl<'input, const RFC: usize, const EFC: usize> crate::Decoder for Decoder<'inp
     ) -> Result<T> {
         let mut octet_string = Vec::new();
         let codec = self.codec();
-
+        if self.options.aligned {
+            if let Some(size_constraints) = constraints.size() {
+                match *size_constraints.constraint {
+                    Bounded::Single(size) => {
+                        if size > 2 {
+                            self.input = self.parse_padding(self.input)?;  
+                        }
+                    },
+                    Bounded::Range { 
+                        start: min,
+                        end: max,
+                    } => {
+                        if min.unwrap_or(0) > 2 || max.unwrap_or(3) > 2 {
+                            self.input = self.parse_padding(self.input)?;  
+                        }
+                    },
+                    Bounded::None => {
+                        self.input = self.parse_padding(self.input)?;
+                    },
+                }
+            } else {
+                self.input = self.parse_padding(self.input)?;
+            }
+        }
         self.decode_extensible_container(constraints, |input, length| {
             let (input, part) = nom::bytes::streaming::take(length * 8)(input)
                 .map_err(|e| DecodeError::map_nom_err(e, codec))?;
@@ -735,7 +759,30 @@ impl<'input, const RFC: usize, const EFC: usize> crate::Decoder for Decoder<'inp
     fn decode_bit_string(&mut self, _: Tag, constraints: Constraints) -> Result<types::BitString> {
         let mut bit_string = types::BitString::default();
         let codec = self.codec();
-
+        if self.options.aligned {
+            if let Some(size_constraints) = constraints.size() {
+                match *size_constraints.constraint {
+                    Bounded::Single(size) => {
+                        if size > 16 {
+                            self.input = self.parse_padding(self.input)?;  
+                        }
+                    },
+                    Bounded::Range { 
+                        start: min,
+                        end: max,
+                    } => {
+                        if min.unwrap_or(0) > 16 || max.unwrap_or(17) > 16 {
+                            self.input = self.parse_padding(self.input)?;  
+                        }
+                    },
+                    Bounded::None => {
+                        self.input = self.parse_padding(self.input)?;
+                    },
+                }
+            } else {
+                self.input = self.parse_padding(self.input)?;
+            }
+        }
         self.decode_extensible_container(constraints, |input, length| {
             let (input, part) = nom::bytes::streaming::take(length)(input)
                 .map_err(|e| DecodeError::map_nom_err(e, codec))?;
