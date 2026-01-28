@@ -710,6 +710,7 @@ impl<'input, const RFC: usize, const EFC: usize> crate::Decoder for Decoder<'inp
     ) -> Result<T> {
         let mut octet_string = Vec::new();
         let codec = self.codec();
+        let aligned = self.options.aligned;
         if self.options.aligned {
             if let Some(size_constraints) = constraints.size() {
                 match *size_constraints.constraint {
@@ -735,6 +736,13 @@ impl<'input, const RFC: usize, const EFC: usize> crate::Decoder for Decoder<'inp
             }
         }
         self.decode_extensible_container(constraints, |input, length| {
+            let input = if aligned && length > 2 && !input.len().is_multiple_of(8) {
+                let (input, _) = nom::bytes::streaming::take(input.len() % 8)(input)
+                .map_err(|e| DecodeError::map_nom_err(e, codec))?;
+                input
+            } else {
+                input
+            };
             let (input, part) = nom::bytes::streaming::take(length * 8)(input)
                 .map_err(|e| DecodeError::map_nom_err(e, codec))?;
 
