@@ -805,11 +805,15 @@ impl<'input, const RFC: usize, const EFC: usize> crate::Decoder for Decoder<'inp
             }
         }
 
+        let min_len = size_constraints.map(|s| s.constraint.minimum());
         let input = self.decode_length(self.input, size_constraints, &mut |mut input, length| {
             if aligned && input.len() % 8 != 0 {
-                if constraints.size().is_none() || constraints.size().is_some_and(|s| s.extensible.is_some()) {
+                if constraints.size().is_none()
+                    || constraints.size().is_some_and(|s| s.extensible.is_some())
+                    || min_len.is_some_and(|min| min > 16)
+                {
                     let (next, _) = nom::bytes::streaming::take(input.len() % 8)(input)
-                    .map_err(|e| DecodeError::map_nom_err(e, codec))?;
+                        .map_err(|e| DecodeError::map_nom_err(e, codec))?;
                     input = next;
                 }
             }
