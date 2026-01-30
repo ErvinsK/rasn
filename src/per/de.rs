@@ -265,6 +265,10 @@ impl<'input, const RFC: usize, const EFC: usize> Decoder<'input, RFC, EFC> {
             return self.decode_unknown_length(input, decode_fn);
         };
 
+        if constraints.extensible.is_some() {
+            return self.decode_unknown_length(input, decode_fn);
+        }
+
         let size_constraint = constraints.constraint;
         if let Some(range) = size_constraint
             .range()
@@ -316,6 +320,10 @@ impl<'input, const RFC: usize, const EFC: usize> Decoder<'input, RFC, EFC> {
         let Some(constraints) = constraints else {
             return self.decode_unknown_length(input, decode_fn);
         };
+
+        if constraints.extensible.is_some() {
+            return self.decode_unknown_length(input, decode_fn);
+        }
 
         let size_constraint = constraints.constraint;
         if let Some(range) = size_constraint
@@ -767,36 +775,50 @@ impl<'input, const RFC: usize, const EFC: usize> crate::Decoder for Decoder<'inp
     fn decode_bit_string(&mut self, _: Tag, constraints: Constraints) -> Result<types::BitString> {
         let mut bit_string = types::BitString::default();
         let codec = self.codec();
+        let aligned = self.options.aligned;
+        let extensible_is_present = self.parse_extensible_bit(&constraints)?;
+        let size_constraints = constraints.size().filter(|_| !extensible_is_present);
+
         if self.options.aligned {
-            if let Some(size_constraints) = constraints.size() {
+            if constraints.size().is_some_and(|s| s.extensible.is_some()) {
+                self.input = self.parse_padding(self.input)?;
+            }
+
+            if let Some(size_constraints) = size_constraints {
                 match *size_constraints.constraint {
                     Bounded::Single(size) => {
                         if size > 16 {
-                            self.input = self.parse_padding(self.input)?;  
+                            self.input = self.parse_padding(self.input)?;
                         }
-                    },
-                    Bounded::Range { 
-                        start: min,
-                        end: max,
-                    } => {
+                    }
+                    Bounded::Range { start: min, end: max } => {
                         if min.unwrap_or(0) > 16 || max.unwrap_or(17) > 16 {
-                            self.input = self.parse_padding(self.input)?;  
+                            self.input = self.parse_padding(self.input)?;
                         }
-                    },
+                    }
                     Bounded::None => {
                         self.input = self.parse_padding(self.input)?;
-                    },
+                    }
                 }
             } else {
                 self.input = self.parse_padding(self.input)?;
             }
         }
-        self.decode_extensible_container(constraints, |input, length| {
+
+        let input = self.decode_length(self.input, size_constraints, &mut |mut input, length| {
+            if aligned && input.len() % 8 != 0 {
+                if constraints.size().is_none() || constraints.size().is_some_and(|s| s.extensible.is_some()) {
+                    let (next, _) = nom::bytes::streaming::take(input.len() % 8)(input)
+                    .map_err(|e| DecodeError::map_nom_err(e, codec))?;
+                    input = next;
+                }
+            }
             let (input, part) = nom::bytes::streaming::take(length)(input)
                 .map_err(|e| DecodeError::map_nom_err(e, codec))?;
             bit_string.extend(&*part);
             Ok(input)
         })?;
+        self.input = input;
 
         Ok(bit_string)
     }

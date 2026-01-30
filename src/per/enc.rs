@@ -451,17 +451,22 @@ impl<const RCL: usize, const ECL: usize> Encoder<RCL, ECL> {
             Error::check_length(length, &constraints.constraint, self.codec())?;
         }
 
+        let extensibility = constraints.extensible.is_some();
         let constraints = constraints.constraint;
 
         match constraints.start_and_end() {
-            (Some(_), Some(_)) => {
+            (Some(i), Some(_)) => {
                 let range = constraints.range().unwrap();
 
                 if range == 0 {
                     Ok(())
                 } else if range == 1 {
-                    buffer.extend((encode_fn)(0..length)?);
-                    Ok(())
+                    if extensibility {
+                        self.encode_unconstrained_length(buffer, length, None, encode_fn)
+                    } else {
+                        buffer.extend((encode_fn)(0..length)?);
+                        Ok(())
+                    }
                 } else if range <= SIXTY_FOUR_K as usize {
                     let effective_length = constraints.effective_value(length).into_inner();
                     let range = if self.options.aligned && range > 256 {
@@ -476,17 +481,20 @@ impl<const RCL: usize, const ECL: usize> Encoder<RCL, ECL> {
                     } else {
                         range as i128
                     };
-                    self.encode_non_negative_binary_integer(
-                        buffer,
-                        range,
-                        &(effective_length as u32).to_be_bytes(),
-                    );
-                    if is_large_string {
-                        self.pad_to_alignment(buffer);
+                    if extensibility {
+                        self.encode_unconstrained_length(buffer, length, Some(*i), encode_fn)
+                    } else {
+                        self.encode_non_negative_binary_integer(
+                            buffer,
+                            range,
+                            &(effective_length as u32).to_be_bytes(),
+                        );
+                        if is_large_string {
+                            self.pad_to_alignment(buffer);
+                        }
+                        buffer.extend((encode_fn)(0..length)?);
+                        Ok(())
                     }
-
-                    buffer.extend((encode_fn)(0..length)?);
-                    Ok(())
                 } else {
                     self.encode_unconstrained_length(buffer, length, None, encode_fn)
                 }
@@ -511,7 +519,9 @@ impl<const RCL: usize, const ECL: usize> Encoder<RCL, ECL> {
             Error::check_length(length, &constraints.constraint, self.codec())?;
         }
 
+        let extensibility = constraints.extensible.is_some();
         let constraints = constraints.constraint;
+        
 
         match constraints.start_and_end() {
             (Some(_), Some(_)) => {
@@ -519,7 +529,7 @@ impl<const RCL: usize, const ECL: usize> Encoder<RCL, ECL> {
 
                 if range == 0 {
                     Ok(())
-                } else if range == 1 {
+                } else if range == 1 && !extensibility {
                     (encode_fn)(buffer, 0..length)?;
                     Ok(())
                 } else if range <= SIXTY_FOUR_K as usize {
@@ -955,6 +965,10 @@ impl<const RFC: usize, const EFC: usize> crate::Encoder<'_> for Encoder<RFC, EFC
         });
         let size = constraints.size();
 
+        if constraints.size().is_some_and(|s| s.extensible.is_some()) {
+            self.pad_to_alignment(&mut buffer);
+        }
+
         if extensible_is_present || size.is_none() {
             self.encode_length(&mut buffer, value.len(), <_>::default(), |range| {
                 Ok(BitString::from(&value[range]))
@@ -963,7 +977,7 @@ impl<const RFC: usize, const EFC: usize> crate::Encoder<'_> for Encoder<RFC, EFC
             // NO-OP
         } else if size.is_some_and(|size| {
             size.constraint.range() == Some(1) && size.constraint.as_start() <= Some(&16)
-        }) {
+        }) {       
             // ITU-T X.691 (02/2021) §16: Bitstrings constrained to a fixed length less than or equal to 16 bits
             // do not cause octet alignment. Larger bitstrings are octet-aligned in the ALIGNED variant.
             self.encode_length(&mut buffer, value.len(), constraints.size(), |range| {
