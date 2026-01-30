@@ -40,17 +40,18 @@ BEGIN
 END
 */
 
-#[doc = "BIT STRING (SIZE(22..32))"]
+#[doc = "BIT STRING (SIZE(1..32))"]
 #[derive(Default, AsnType, Debug, Clone, Decode, Encode, PartialEq, Eq, Hash)]
-#[rasn(delegate, size("22..=32"))]
+#[rasn(delegate, size("1..=32"))]
 pub struct BITSTR2(pub BitString);
 
 #[test]
 fn test_aper_alignment_variable_bit_string2() {
     // Test value within base range
-    let bv: BitVec::<u8, Msb0> = [true;22].into_iter().collect();
+    let bv: BitVec::<u8, Msb0> = [true;1].into_iter().collect();
     let original = BITSTR2(bv);
     let encoded = rasn::aper::encode(&original).expect("encode");
+    println!("encoded: {:02X?}", encoded);
     let decoded: BITSTR2 = rasn::aper::decode(&encoded).expect("decode");
     assert_eq!(original, decoded); 
     // Test extended value

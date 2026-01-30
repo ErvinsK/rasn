@@ -718,39 +718,41 @@ impl<'input, const RFC: usize, const EFC: usize> crate::Decoder for Decoder<'inp
     ) -> Result<T> {
         let mut octet_string = Vec::new();
         let codec = self.codec();
-        let aligned = self.options.aligned;
+        let extensible_is_present = self.parse_extensible_bit(&constraints)?;
+        let size_constraints = constraints.size().filter(|_| !extensible_is_present);
+
         if self.options.aligned {
-            if let Some(size_constraints) = constraints.size() {
+            if constraints.size().is_some_and(|s| s.extensible.is_some()) {
+                self.input = self.parse_padding(self.input)?;
+            }
+
+            if let Some(size_constraints) = size_constraints {
                 match *size_constraints.constraint {
                     Bounded::Single(size) => {
                         if size > 2 {
-                            self.input = self.parse_padding(self.input)?;  
+                            self.input = self.parse_padding(self.input)?;
                         }
-                    },
-                    Bounded::Range { 
-                        start: min,
-                        end: max,
-                    } => {
-                        if min.unwrap_or(0) > 2 || max.unwrap_or(3) > 2 {
-                            self.input = self.parse_padding(self.input)?;  
+                    }
+                    Bounded::Range { start: min, end: max } => {
+                        let min = min.unwrap_or(0);
+                        let max = max.unwrap_or(3);
+                        if min > 2 || max > 2 {
+                            self.input = self.parse_padding(self.input)?;
                         }
-                    },
+                    }
                     Bounded::None => {
                         self.input = self.parse_padding(self.input)?;
-                    },
+                    }
                 }
             } else {
                 self.input = self.parse_padding(self.input)?;
             }
         }
-        self.decode_extensible_container(constraints, |input, length| {
-            let input = if aligned && length > 2 && !input.len().is_multiple_of(8) {
-                let (input, _) = nom::bytes::streaming::take(input.len() % 8)(input)
-                .map_err(|e| DecodeError::map_nom_err(e, codec))?;
-                input
-            } else {
-                input
-            };
+
+        let is_large_string = size_constraints
+            .map(|s| s.constraint.as_end().map_or(true, |max| *max > 2))
+            .unwrap_or(true);
+        let input = self.decode_string_length(self.input, size_constraints, is_large_string, &mut |input, length| {
             let (input, part) = nom::bytes::streaming::take(length * 8)(input)
                 .map_err(|e| DecodeError::map_nom_err(e, codec))?;
 
@@ -759,6 +761,7 @@ impl<'input, const RFC: usize, const EFC: usize> crate::Decoder for Decoder<'inp
             octet_string.extend_from_slice(bytes.as_raw_slice());
             Ok(input)
         })?;
+        self.input = input;
         Ok(T::from(octet_string))
     }
 
@@ -775,7 +778,6 @@ impl<'input, const RFC: usize, const EFC: usize> crate::Decoder for Decoder<'inp
     fn decode_bit_string(&mut self, _: Tag, constraints: Constraints) -> Result<types::BitString> {
         let mut bit_string = types::BitString::default();
         let codec = self.codec();
-        let aligned = self.options.aligned;
         let extensible_is_present = self.parse_extensible_bit(&constraints)?;
         let size_constraints = constraints.size().filter(|_| !extensible_is_present);
 
@@ -805,23 +807,23 @@ impl<'input, const RFC: usize, const EFC: usize> crate::Decoder for Decoder<'inp
             }
         }
 
-        let min_len = size_constraints.map(|s| s.constraint.minimum());
-        let input = self.decode_length(self.input, size_constraints, &mut |mut input, length| {
-            if aligned && input.len() % 8 != 0 {
-                if constraints.size().is_none()
-                    || constraints.size().is_some_and(|s| s.extensible.is_some())
-                    || min_len.is_some_and(|min| min > 16)
-                {
-                    let (next, _) = nom::bytes::streaming::take(input.len() % 8)(input)
-                        .map_err(|e| DecodeError::map_nom_err(e, codec))?;
-                    input = next;
-                }
+        let is_large_string = size_constraints.map_or(false, |s| {
+            match s.constraint.range() {
+                Some(1) => s.constraint.as_start().is_some_and(|v| *v > 16),
+                _ => true,
             }
-            let (input, part) = nom::bytes::streaming::take(length)(input)
-                .map_err(|e| DecodeError::map_nom_err(e, codec))?;
-            bit_string.extend(&*part);
-            Ok(input)
-        })?;
+        });
+        let input = self.decode_string_length(
+            self.input,
+            size_constraints,
+            is_large_string,
+            &mut |input, length| {
+                let (input, part) = nom::bytes::streaming::take(length)(input)
+                    .map_err(|e| DecodeError::map_nom_err(e, codec))?;
+                bit_string.extend(&*part);
+                Ok(input)
+            },
+        )?;
         self.input = input;
 
         Ok(bit_string)
