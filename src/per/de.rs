@@ -277,7 +277,7 @@ impl<'input, const RFC: usize, const EFC: usize> Decoder<'input, RFC, EFC> {
             if range == 0 {
                 Ok(input)
             } else if range == 1 {
-                if self.options.aligned {
+                if self.options.aligned && constraints.constraint.minimum() > 16 {
                     input = self.parse_padding(input)?;
                 }
                 (decode_fn)(input, size_constraint.minimum())
