@@ -750,7 +750,7 @@ impl<'input, const RFC: usize, const EFC: usize> crate::Decoder for Decoder<'inp
         }
 
         let is_large_string = size_constraints
-            .map(|s| s.constraint.as_end().map_or(true, |max| *max > 2))
+            .map(|s| s.constraint.as_end().is_none_or(|max| *max > 2))
             .unwrap_or(true);
         let input = self.decode_string_length(self.input, size_constraints, is_large_string, &mut |input, length| {
             let (input, part) = nom::bytes::streaming::take(length * 8)(input)
@@ -807,7 +807,7 @@ impl<'input, const RFC: usize, const EFC: usize> crate::Decoder for Decoder<'inp
             }
         }
 
-        let is_large_string = size_constraints.map_or(false, |s| {
+        let is_large_string = size_constraints.is_some_and(|s| {
             match s.constraint.range() {
                 Some(1) => s.constraint.as_start().is_some_and(|v| *v > 16),
                 _ => true,
