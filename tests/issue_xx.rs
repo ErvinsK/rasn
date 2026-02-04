@@ -55,7 +55,7 @@ fn test_aper_alignment_variable_octet_string2() {
 /*
 World-Schema DEFINITIONS AUTOMATIC TAGS ::=
 BEGIN
-    Variable_Octet_String ::= OCTETSTRING (SIZE(3), ...)
+    Variable_Octet_String ::= OCTETSTRING (SIZE(1..32))
 END
 */
 

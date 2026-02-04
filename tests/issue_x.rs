@@ -85,3 +85,27 @@ fn test_aper_alignment_sequence_of_1_300() {
     let decoded: S3 = rasn::aper::decode(&encoded).expect("decode");
     assert_eq!(original, decoded);
 }
+
+#[doc = "Variable OCTET STRING"]
+#[derive(AsnType, Debug, Clone, Decode, Encode, PartialEq, Eq, Hash)]
+#[rasn(delegate, size("1..=32"), identifier = "OctetString")]
+pub struct A3(pub OctetString);
+
+#[doc = "SEQUENCE OF (SIZE(1..300)) To Test APER alignment"]
+#[derive(AsnType, Debug, Clone, Decode, Encode, PartialEq, Eq, Hash)]
+#[rasn(delegate, size("1..=4"))]
+#[rasn(identifier = "SEQUENCE OF (SIZE(1..4)) To Test APER alignment")]
+pub struct S4(pub SequenceOf<A3>);
+
+#[test]
+fn test_aper_alignment_sequence_of_1_300_with_variable_size_elements() {
+    let original = S4(SequenceOf::from(vec![
+        A3(OctetString::from(vec![0xff, 0xff, 0xff, 0xff])),
+        A3(OctetString::from(vec![0xaa, 0xaa, 0xaa])),
+        A3(OctetString::from(vec![0x55, 0x55, 0x55, 0x55, 0x55])),
+    ]));
+    let encoded = rasn::aper::encode(&original).expect("encode");
+    println!("encoded: {:02X?}", encoded);
+    let decoded: S4 = rasn::aper::decode(&encoded).expect("decode");
+    assert_eq!(original, decoded);
+}
