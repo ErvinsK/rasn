@@ -32,18 +32,18 @@ pub struct B2(pub FixedBitString<17>);
 #[rasn(identifier = "SEQUENCE To Test APER alignment")]
 #[non_exhaustive]
 pub struct S1 {
-    pub a1: A2,
+    pub a1: A1,
     pub b2: Option<B2>,
 }
 
 #[doc = "SEQUENCE OF To Test APER alignment"]
 #[derive(AsnType, Debug, Clone, Decode, Encode, PartialEq, Eq, Hash)]
-#[rasn(delegate, size("0..=300"))]
-#[rasn(identifier = "SEQUENCE OF (SIZE(0..=300, ...)) To Test APER alignment")]
+#[rasn(delegate, size("1..=32"))]
+#[rasn(identifier = "SEQUENCE OF (SIZE(1..=32)) To Test APER alignment")]
 #[non_exhaustive]
 pub struct S2(pub SequenceOf<A2>);
 
-#[doc = "SEQUENCE OF (SIZE(1..300)) To Test APER alignment"]
+#[doc = "SEQUENCE OF (SIZE(1..32)) To Test APER alignment"]
 #[derive(AsnType, Debug, Clone, Decode, Encode, PartialEq, Eq, Hash)]
 #[rasn(delegate, size("1..=300"))]
 #[rasn(identifier = "SEQUENCE OF (SIZE(1..300)) To Test APER alignment")]
@@ -54,10 +54,11 @@ pub struct S3(pub SequenceOf<A2>);
 #[test]
 fn test_aper_alignment_sequence() {
     let original = S1 {
-        a1: A2(FixedOctetString::new([0xff, 0xff, 0xff])),
+        a1: A1(FixedOctetString::new([0xff, 0xff])),
         b2: Some(B2(FixedBitString::new([0b11111111, 0b11111111, 0b10000000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]))),
     };
     let encoded = rasn::aper::encode(&original).expect("encode");
+    println!("encoded: {:02X?}", encoded);
     let decoded: S1 = rasn::aper::decode(&encoded).expect("decode");
     assert_eq!(original, decoded);
 }
@@ -70,6 +71,7 @@ fn test_aper_alignment_sequence_of() {
         A2(FixedOctetString::new([0x55, 0x55, 0x55])),
     ]));
     let encoded = rasn::aper::encode(&original).expect("encode");
+    println!("encoded: {:02X?}", encoded);
     let decoded: S2 = rasn::aper::decode(&encoded).expect("decode");
     assert_eq!(original, decoded);
 }
@@ -95,14 +97,19 @@ pub struct A3(pub OctetString);
 #[derive(AsnType, Debug, Clone, Decode, Encode, PartialEq, Eq, Hash)]
 #[rasn(delegate, size("1..=32"))]
 #[rasn(identifier = "SEQUENCE OF (SIZE(1..32)) To Test APER alignment")]
-pub struct S4(pub SequenceOf<A3>);
+pub struct S4(pub SequenceOf<S1>);
 
 #[test]
 fn test_aper_alignment_sequence_of_1_32_with_variable_size_elements() {
     let original = S4(SequenceOf::from(vec![
-        A3(OctetString::from(vec![0xff, 0xff, 0xff, 0xff])),
-        A3(OctetString::from(vec![0xaa, 0xaa, 0xaa])),
-        A3(OctetString::from(vec![0x55, 0x55, 0x55, 0x55, 0x55])),
+        S1 {
+            a1: A1(FixedOctetString::new([0xff, 0xff])),
+            b2: Some(B2(FixedBitString::new([0b11111111, 0b11111111, 0b10000000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]))),
+        },
+        S1 {
+            a1: A1(FixedOctetString::new([0xff, 0xff])),
+            b2: None,
+        },
     ]));
     let encoded = rasn::aper::encode(&original).expect("encode");
     println!("encoded: {:02X?}", encoded);

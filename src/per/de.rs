@@ -297,7 +297,7 @@ impl<'input, const RFC: usize, const EFC: usize> Decoder<'input, RFC, EFC> {
                 let (mut input, length) =
                     nom::bytes::streaming::take(crate::num::log2(range))(input)
                         .map_err(|e| DecodeError::map_nom_err(e, self.codec()))?;
-                if is_large_string || self.options.aligned {
+                if is_large_string {
                     input = self.parse_padding(input)?;
                 }
                 length

@@ -552,7 +552,7 @@ impl<const RCL: usize, const ECL: usize> Encoder<RCL, ECL> {
                         range,
                         &(effective_length as u32).to_be_bytes(),
                     );
-                    if self.options.aligned || is_large_string {
+                    if is_large_string {
                         self.pad_to_alignment(buffer);
                     }
                     (encode_fn)(buffer, 0..length)?;
