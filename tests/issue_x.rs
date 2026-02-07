@@ -91,14 +91,14 @@ fn test_aper_alignment_sequence_of_1_300() {
 #[rasn(delegate, size("1..=32"), identifier = "OctetString")]
 pub struct A3(pub OctetString);
 
-#[doc = "SEQUENCE OF (SIZE(1..300)) To Test APER alignment"]
+#[doc = "SEQUENCE OF (SIZE(1..32)) To Test APER alignment"]
 #[derive(AsnType, Debug, Clone, Decode, Encode, PartialEq, Eq, Hash)]
-#[rasn(delegate, size("1..=4"))]
-#[rasn(identifier = "SEQUENCE OF (SIZE(1..4)) To Test APER alignment")]
+#[rasn(delegate, size("1..=32"))]
+#[rasn(identifier = "SEQUENCE OF (SIZE(1..32)) To Test APER alignment")]
 pub struct S4(pub SequenceOf<A3>);
 
 #[test]
-fn test_aper_alignment_sequence_of_1_300_with_variable_size_elements() {
+fn test_aper_alignment_sequence_of_1_32_with_variable_size_elements() {
     let original = S4(SequenceOf::from(vec![
         A3(OctetString::from(vec![0xff, 0xff, 0xff, 0xff])),
         A3(OctetString::from(vec![0xaa, 0xaa, 0xaa])),
