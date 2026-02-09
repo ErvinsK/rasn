@@ -116,3 +116,40 @@ fn test_aper_alignment_sequence_of_1_32_with_variable_size_elements() {
     let decoded: S4 = rasn::aper::decode(&encoded).expect("decode");
     assert_eq!(original, decoded);
 }
+
+#[doc = "SEQUENCE OF (SIZE(1..4)) To Test APER alignment"]
+#[derive(AsnType, Debug, Clone, Decode, Encode, PartialEq, Eq, Hash)]
+#[rasn(delegate, size("1..=4"))]
+#[rasn(identifier = "SEQUENCE OF (SIZE(1..4)) To Test APER alignment")]
+pub struct S5(pub SequenceOf<A3>);
+
+#[test]
+fn test_aper_alignment_sequence_of_1_4_with_variable_size_elements() {
+    let original = S5(SequenceOf::from(vec![
+        A3(OctetString::from(vec![0xff, 0xff, 0xff])),
+        A3(OctetString::from(vec![0xaa, 0xaa])),
+    ]));
+    let encoded = rasn::aper::encode(&original).expect("encode");
+    println!("encoded: {:02X?}", encoded);
+    let decoded: S5 = rasn::aper::decode(&encoded).expect("decode");
+    assert_eq!(original, decoded);
+}
+
+#[doc = "SEQUENCE OF (SIZE(1..4)) To Test APER alignment"]
+#[derive(AsnType, Debug, Clone, Decode, Encode, PartialEq, Eq, Hash)]
+#[rasn(delegate, size("1..=4"))]
+#[rasn(identifier = "SEQUENCE OF (SIZE(1..4)) To Test APER alignment")]
+pub struct S6(pub SequenceOf<A1>);
+
+#[test]
+fn test_aper_alignment_sequence_of_1_4_with_fixed_size_elements() {
+    let original = S6(SequenceOf::from(vec![
+        A1(FixedOctetString::new([0xff, 0xff])),
+        A1(FixedOctetString::new([0xaa, 0xaa])),
+    ]));
+    let encoded = rasn::aper::encode(&original).expect("encode");
+    println!("encoded: {:02X?}", encoded);
+    let decoded: S6 = rasn::aper::decode(&encoded).expect("decode");
+    assert_eq!(original, decoded);
+}
+

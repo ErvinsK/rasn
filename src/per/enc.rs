@@ -765,9 +765,7 @@ impl<const RCL: usize, const ECL: usize> Encoder<RCL, ECL> {
                 Ok(BitString::from_slice(&value[range]))
             })?;
         } else {
-            if size.constraint.range() == Some(1) {
-                self.pad_to_alignment(buffer);
-            }
+            self.pad_to_alignment(buffer);
             self.encode_string_length(buffer, true, value.len(), Some(size), |range| {
                 Ok(BitString::from_slice(&value[range]))
             })?;
