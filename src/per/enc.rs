@@ -1397,15 +1397,19 @@ impl<const RFC: usize, const EFC: usize> crate::Encoder<'_> for Encoder<RFC, EFC
         };
 
         let mut choice_encoder = Self::new(self.options.without_set_encoding());
-        // Extensibility and index encoding size must be noted for byte alignment
+        // Extensibility and index encoding size must be noted for byte alignment.
         let mut choice_bits_len = 0;
-        if E::EXTENDED_VARIANTS.is_some() && self.options.aligned {
+        if self.options.aligned && constraints.extensible() {
             choice_bits_len += 1;
         }
-        choice_bits_len += if let Some(Some(variance)) = bounds {
-            crate::num::log2(variance as i128) as usize
-        } else {
-            0
+        choice_bits_len += match bounds {
+            Some(Some(variance)) => crate::num::log2(variance as i128) as usize,
+            Some(None) => {
+                let mut tmp = BitString::new();
+                self.encode_normally_small_integer(index, &mut tmp)?;
+                tmp.len()
+            }
+            None => 0,
         };
 
         choice_encoder.parent_output_length = Some(choice_bits_len);
@@ -1418,7 +1422,6 @@ impl<const RFC: usize, const EFC: usize> crate::Encoder<'_> for Encoder<RFC, EFC
                     &index,
                     &mut buffer,
                 )?;
-
                 buffer.extend(choice_encoder.output);
             }
             (index, Some(None)) => {

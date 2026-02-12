@@ -36,16 +36,18 @@ pub enum SChoice {
 
 #[test]
 fn test_aper_alignment_choice() {
-    let octets = B(FixedOctetString::from([0xff, 0xff, 0xff, 0xff]));
-    let encoded = rasn::aper::encode(&octets).expect("encode");
-    println!("encoded: {:02X?}", encoded);
-    let decoded: B = rasn::aper::decode(&encoded).expect("decode");
-    assert_eq!(octets, decoded);
-    let original = SChoice::First(B(FixedOctetString::from([0xff, 0xff, 0xff, 0xff])));
-    let encoded = rasn::aper::encode(&original).expect("encode");
-    println!("encoded: {:02X?}", encoded);
-    let decoded: SChoice = rasn::aper::decode(&encoded).expect("decode");
-    assert_eq!(original, decoded);
+    let original: Vec<SChoice> = vec![
+        SChoice::First(B(FixedOctetString::from([0xff, 0xff, 0xff, 0xff]))),
+        SChoice::Second(B(FixedOctetString::from([0xff, 0xff, 0xff, 0xff]))),
+        SChoice::Third(B(FixedOctetString::from([0xff, 0xff, 0xff, 0xff]))),
+    ];
+    for choice in original {
+        let encoded = rasn::aper::encode(&choice).expect("encode");
+        println!("encoded: {:02X?}", encoded);
+        let decoded: SChoice = rasn::aper::decode(&encoded).expect("decode");
+        assert_eq!(choice, decoded);
+    }
 }
+
 
 

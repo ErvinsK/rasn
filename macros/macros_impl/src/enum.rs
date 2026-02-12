@@ -102,11 +102,9 @@ impl Enum<'_> {
         // Check count of the root components in the choice
         // https://github.com/XAMPPRocky/rasn/issues/168
         // Choice index starts from zero, so we need to reduce variance by one
-        let variant_count = if self.variants.is_empty() {
-            0
-        } else {
-            self.variants.len() - 1
-        };
+        let base_count = base_variants.len();
+        let variant_count = if base_count == 0 { 0 } else { base_count - 1 };
+
 
         let variance_constraint = Constraints {
             extensible: false,
