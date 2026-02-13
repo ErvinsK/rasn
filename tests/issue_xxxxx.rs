@@ -48,6 +48,28 @@ fn test_aper_alignment_choice() {
         assert_eq!(choice, decoded);
     }
 }
+#[doc = "S"]
+#[derive(AsnType, Debug, Clone, Decode, Encode, PartialEq, Eq, Hash)]
+#[rasn(automatic_tags, identifier = "S")]
+#[non_exhaustive]
+pub struct S {
+    #[rasn(identifier = "A")]
+    pub a: SChoice,
+    #[rasn(identifier = "B")]
+    pub b: Option<Integer>,
+}
+
+#[test]
+fn test_aper_sequence_with_choice() {
+    let original = S {
+        a: SChoice::First(B(FixedOctetString::from([0xff, 0xff, 0xff, 0xff]))),
+        b: Some(42.into()),
+    };
+    let encoded = rasn::aper::encode(&original).expect("encode");
+    println!("encoded: {:02X?}", encoded);
+    let decoded: S = rasn::aper::decode(&encoded).expect("decode");
+    assert_eq!(original, decoded);
+}
 
 
 
