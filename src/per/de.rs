@@ -781,32 +781,6 @@ impl<'input, const RFC: usize, const EFC: usize> crate::Decoder for Decoder<'inp
         let extensible_is_present = self.parse_extensible_bit(&constraints)?;
         let size_constraints = constraints.size().filter(|_| !extensible_is_present);
 
-        if self.options.aligned {
-            if constraints.size().is_some_and(|s| s.extensible.is_some()) {
-                self.input = self.parse_padding(self.input)?;
-            }
-
-            if let Some(size_constraints) = size_constraints {
-                match *size_constraints.constraint {
-                    Bounded::Single(size) => {
-                        if size > 16 {
-                            self.input = self.parse_padding(self.input)?;
-                        }
-                    }
-                    Bounded::Range { start: min, end: max } => {
-                        if min.unwrap_or(0) > 16 || max.unwrap_or(17) > 16 {
-                            self.input = self.parse_padding(self.input)?;
-                        }
-                    }
-                    Bounded::None => {
-                        self.input = self.parse_padding(self.input)?;
-                    }
-                }
-            } else {
-                self.input = self.parse_padding(self.input)?;
-            }
-        }
-
         let is_large_string = size_constraints.is_some_and(|s| {
             match s.constraint.range() {
                 Some(1) => s.constraint.as_start().is_some_and(|v| *v > 16),
