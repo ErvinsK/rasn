@@ -456,3 +456,36 @@ fn test_per_encode_utf8_string() {
         assert_eq!(case, uper::decode::<Utf8String>(&buf_expected).unwrap());
     }
 }
+
+#[derive(AsnType, Decode, Encode, Debug, Clone, PartialEq)]
+#[rasn(delegate, size("3"))]
+struct FixedSizeUtf8String(Utf8String);
+
+#[derive(AsnType, Decode, Encode, Debug, Clone, PartialEq)]
+#[rasn(delegate, size("1..=32"))]
+struct RangedSizeUtf8String(Utf8String);
+
+#[test]
+fn test_per_encode_constrained_utf8_string() {
+    let fixed = FixedSizeUtf8String("abc".into());
+    let expected = b"abc";
+    assert_eq!(expected, &*aper::encode(&fixed).unwrap());
+    assert_eq!(expected, &*uper::encode(&fixed).unwrap());
+    assert_eq!(fixed, aper::decode(expected).unwrap());
+    assert_eq!(fixed, uper::decode(expected).unwrap());
+
+    let ranged = RangedSizeUtf8String("abc".into());
+    let aper_expected = [0x10, b'a', b'b', b'c'];
+    let uper_expected = [0x13, 0x0b, 0x13, 0x18];
+    assert_eq!(aper_expected, &*aper::encode(&ranged).unwrap());
+    assert_eq!(uper_expected, &*uper::encode(&ranged).unwrap());
+    assert_eq!(ranged, aper::decode(&aper_expected).unwrap());
+    assert_eq!(ranged, uper::decode(&uper_expected).unwrap());
+
+    let multibyte = FixedSizeUtf8String("åa".into());
+    let expected = "åa".as_bytes();
+    assert_eq!(expected, &*aper::encode(&multibyte).unwrap());
+    assert_eq!(expected, &*uper::encode(&multibyte).unwrap());
+    assert_eq!(multibyte, aper::decode(expected).unwrap());
+    assert_eq!(multibyte, uper::decode(expected).unwrap());
+}

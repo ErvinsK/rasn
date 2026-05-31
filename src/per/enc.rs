@@ -1180,16 +1180,11 @@ impl<const RFC: usize, const EFC: usize> crate::Encoder<'_> for Encoder<RFC, EFC
     fn encode_utf8_string(
         &mut self,
         tag: Tag,
-        _: Constraints,
+        constraints: Constraints,
         value: &str,
         _: Identifier,
     ) -> Result<Self::Ok, Self::Error> {
-        self.encode_octet_string(
-            tag,
-            Constraints::default(),
-            value.as_bytes(),
-            Identifier::EMPTY,
-        )
+        self.encode_octet_string(tag, constraints, value.as_bytes(), Identifier::EMPTY)
     }
 
     fn encode_utc_time(
